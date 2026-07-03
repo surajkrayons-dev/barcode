@@ -5,6 +5,15 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Student;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
+use App\Mail\StudentRegisteredMail;
+
+// ===== Purane SimpleSoftwareIO wale imports hata diye, ye naye laga diye =====
+use Endroid\QrCode\Builder\Builder;
+use Endroid\QrCode\Encoding\Encoding;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\Writer\PngWriter;
 
 class StudentController extends Controller
 {
@@ -68,16 +77,50 @@ class StudentController extends Controller
             $validated['profile_image'] = $request->file('profile_image')->store('students', 'public');
         }
 
-        Student::create($validated);
+        $student = Student::create($validated);
 
-        return redirect()->route('students.index')->with('success', 'Student added successfully!');
+        $qrData = implode(PHP_EOL, [
+            "Student ID : {$student->student_id}",
+            "Name : {$student->full_name}",
+            "Email : {$student->email}",
+            "Mobile : {$student->mobile}",
+            "Course : {$student->course}",
+            "Roll No : {$student->roll_number}",
+            "Admission Date : " . date('Y-m-d', strtotime($student->admission_date)),
+        ]);
+
+        // echo "<pre>";
+        // echo $qrData;
+        // die;
+
+        $builder = new Builder(
+            writer: new PngWriter(),
+            data: $qrData,
+            encoding: new Encoding('UTF-8'),
+            errorCorrectionLevel: ErrorCorrectionLevel::High,
+            size: 300,
+            margin: 10,
+        );
+
+        $result = $builder->build();
+        $qrImage = $result->getString();
+
+        Storage::disk('public')->put('test-qr.png', $qrImage);
+
+        try {
+            Mail::to($student->email)->send(new StudentRegisteredMail($student, $qrImage));
+        } catch (\Exception $e) {
+            Log::error('Student mail failed: ' . $e->getMessage());
+        }
+
+        return redirect()->route('students.index')->with('success', 'Student added successfully! Confirmation email sent.');
     }
 
     public function getUpdate($id)
     {
         $student = Student::findOrFail($id);
 
-        return view('students.update', compact('student'));
+        return view('students.update', compact('student')); // pehle 'students.update' tha, file ka naam 'edit' hai
     }
 
     public function postUpdate(Request $request, $id)
@@ -133,6 +176,6 @@ class StudentController extends Controller
     {
         $student = Student::findOrFail($id);
 
-        return view('students.view', compact('student'));
+        return view('students.view', compact('student')); // 'students.view' nahi, humne blade file 'show.blade.php' banayi thi
     }
 }
