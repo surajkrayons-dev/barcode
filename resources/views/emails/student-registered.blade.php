@@ -1,4 +1,3 @@
-{{-- resources/views/emails/student-registered.blade.php --}}
 <!DOCTYPE html>
 <html>
 <head>
