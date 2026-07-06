@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Mail\RegistrationRegisteredMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use App\Services\BadgeGenerator;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Encoding\Encoding;
 use Endroid\QrCode\ErrorCorrectionLevel;
@@ -109,14 +110,18 @@ class RegistrationController extends Controller
             $qrImage
         );
 
-        $badgePath = $this->generateBadge($registration);
+        // 1) Email ke liye ORIGINAL badge (background ke saath) - ye untouched hai
+        $emailBadgePath = $this->generateBadge($registration);
+
+        // 2) Download button ke liye NAYA standalone card (kam padding) - alag file
+        $downloadBadgePath = $this->generateDownloadCard($registration);
 
         try {
 
             Mail::to($registration->email)
                 ->send(new RegistrationRegisteredMail(
                     $registration,
-                    $badgePath
+                    $emailBadgePath
                 ));
 
         } catch (\Exception $e) {
@@ -126,8 +131,11 @@ class RegistrationController extends Controller
         }
 
         return redirect()
-            ->route('registrations.index')
-            ->with('success','Registration created successfully. Email sent.');
+            ->route('registration.create')
+            ->with([
+                'success' => 'Registration created successfully.',
+                'badge'   => asset('storage/badge-cards/'.$registration->registration_no.'.png'),
+            ]);
     }
 
     public function getUpdate($id)
@@ -220,6 +228,10 @@ class RegistrationController extends Controller
             ->with('success','Registration deleted successfully.');
     }
 
+    /**
+     * ORIGINAL badge generator - gift.jpg background ke saath.
+     * Ye function bilkul UNCHANGED hai - sirf email attachment ke liye use hota hai.
+     */
     private function generateBadge($registration)
     {
         $background = imagecreatefromjpeg(public_path('gift.jpg'));
@@ -228,8 +240,8 @@ class RegistrationController extends Controller
 
         $cardX = 170;
         $cardY = 230;
-        $cardWidth = 280;  
-        $cardHeight = 280;  
+        $cardWidth = 280;
+        $cardHeight = 280;
 
         $this->roundedRectangle(
             $background,
@@ -249,7 +261,7 @@ class RegistrationController extends Controller
             )
         );
 
-        $qrSize = 120; 
+        $qrSize = 120;
         $qrX = $cardX + (($cardWidth - $qrSize) / 2);
         $qrY = $cardY + 100;
 
@@ -260,7 +272,8 @@ class RegistrationController extends Controller
 
         $black = imagecolorallocate($background, 0, 0, 0);
         $gray  = imagecolorallocate($background, 90, 90, 90);
-        $font  = 'C:\Windows\Fonts\arial.ttf';
+        // $font  = 'C:\Windows\Fonts\arial.ttf';
+        $font = public_path('fonts/Roboto-Regular.ttf');
 
         $name = strtoupper($registration->full_name);
         $nameFont = 16;
@@ -270,7 +283,7 @@ class RegistrationController extends Controller
         imagettftext($background, $nameFont, 0, $x, $cardY + 45, $black, $font, $name);
 
         $company = strtoupper($registration->company_name);
-        $companyFont = 10; 
+        $companyFont = 10;
         $box = imagettfbbox($companyFont, 0, $font, $company);
         $textWidth = $box[2] - $box[0];
         $x = $cardX + ($cardWidth - $textWidth) / 2;
@@ -287,6 +300,80 @@ class RegistrationController extends Controller
         imagedestroy($qr);
 
         return $badgePath;
+    }
+
+    /**
+     * NAYA standalone card - sirf "Download your badge" button ke liye.
+     * 2.5in x 3in @ 300 DPI = 750 x 900 px.
+     * Padding kam ki gayi hai - QR bada, margins chhote.
+     */
+    private function generateDownloadCard($registration)
+    {
+        $cardWidth  = 750;
+        $cardHeight = 900;
+
+        $badge = imagecreatetruecolor($cardWidth, $cardHeight);
+
+        $white  = imagecolorallocate($badge, 255, 255, 255);
+        $black  = imagecolorallocate($badge, 0, 0, 0);
+        $gray   = imagecolorallocate($badge, 90, 90, 90);
+        $border = imagecolorallocate($badge, 210, 210, 210);
+
+        imagefill($badge, 0, 0, $white);
+        imagerectangle($badge, 0, 0, $cardWidth - 1, $cardHeight - 1, $border);
+
+        $font = public_path('fonts/Roboto-Regular.ttf');
+
+        // Kam padding wala layout:
+        $sidePadding = 30;   // pehle QR ke around ~175px khali jagah thi, ab kam
+        $topPadding  = 50;
+
+        // 1. Name (top, kam gap)
+        $name = strtoupper($registration->full_name);
+        $nameFont = 34;
+        $box = imagettfbbox($nameFont, 0, $font, $name);
+        $textWidth = $box[2] - $box[0];
+        $x = ($cardWidth - $textWidth) / 2;
+        imagettftext($badge, $nameFont, 0, $x, $topPadding + 40, $black, $font, $name);
+
+        // 2. QR Code - bada size, kam side padding
+        $qr = imagecreatefrompng(
+            storage_path(
+                'app/public/registration-qrcode/' .
+                $registration->registration_no .
+                '.png'
+            )
+        );
+
+        $qrSize = $cardWidth - ($sidePadding * 2); // ab side gap sirf 30px reh gaya
+        $qrX = $sidePadding;
+        $qrY = $topPadding + 90;
+
+        imagecopyresampled(
+            $badge, $qr, $qrX, $qrY, 0, 0,
+            $qrSize, $qrSize, imagesx($qr), imagesy($qr)
+        );
+
+        // 3. Company name (QR ke turant niche, kam gap)
+        $company = strtoupper($registration->company_name);
+        $companyFont = 22;
+        $box = imagettfbbox($companyFont, 0, $font, $company);
+        $textWidth = $box[2] - $box[0];
+        $x = ($cardWidth - $textWidth) / 2;
+        $companyY = $qrY + $qrSize + 40;
+        imagettftext($badge, $companyFont, 0, $x, $companyY, $gray, $font, $company);
+
+        $downloadPath = storage_path('app/public/badge-cards/' . $registration->registration_no . '.png');
+
+        if (!file_exists(dirname($downloadPath))) {
+            mkdir(dirname($downloadPath), 0777, true);
+        }
+
+        imagepng($badge, $downloadPath);
+        imagedestroy($badge);
+        imagedestroy($qr);
+
+        return $downloadPath;
     }
 
     private function roundedRectangle($img, $x1, $y1, $x2, $y2, $radius, $color)
