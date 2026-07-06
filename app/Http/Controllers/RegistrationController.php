@@ -71,8 +71,10 @@ class RegistrationController extends Controller
             'industry_segment'          => 'required',
             'business_nature'           => 'required',
             'primary_product_group'     => 'required',
-            'additional_product_group'  => 'nullable',
+            'additional_product_group'   => 'nullable|array',
+            'additional_product_group.*' => 'string|in:gifts,stationery,houseware,toys,other',
             'terms'                     => 'accepted',
+            'agree_children_policy'     => 'accepted',
         ]);
 
         $validated['registration_no'] = 'REG'.date('Y').str_pad((Registration::count()+1),5,'0',STR_PAD_LEFT);
@@ -82,6 +84,7 @@ class RegistrationController extends Controller
         );
 
         $validated['terms'] = $request->boolean('terms');
+        $validated['agree_children_policy'] = $request->boolean('agree_children_policy');
         $validated['status'] = true;
 
         $registration = Registration::create($validated);
@@ -110,10 +113,8 @@ class RegistrationController extends Controller
             $qrImage
         );
 
-        // 1) Email ke liye ORIGINAL badge (background ke saath) - ye untouched hai
         $emailBadgePath = $this->generateBadge($registration);
 
-        // 2) Download button ke liye NAYA standalone card (kam padding) - alag file
         $downloadBadgePath = $this->generateDownloadCard($registration);
 
         try {
@@ -134,7 +135,7 @@ class RegistrationController extends Controller
             ->route('registration.create')
             ->with([
                 'success' => 'Registration created successfully.',
-                'badge'   => asset('storage/badge-cards/'.$registration->registration_no.'.png'),
+                'badge'   => route('badge.download', $registration->registration_no),
             ]);
     }
 
@@ -168,8 +169,10 @@ class RegistrationController extends Controller
             'industry_segment'          => 'required',
             'business_nature'           => 'required',
             'primary_product_group'     => 'required',
-            'additional_product_group'  => 'nullable',
+            'additional_product_group'   => 'nullable|array',
+            'additional_product_group.*' => 'string|in:gifts,stationery,houseware,toys,other',
             'terms'                     => 'accepted',
+            'agree_children_policy'     => 'accepted',
         ]);
 
         $validated['full_name'] = trim(
@@ -177,6 +180,7 @@ class RegistrationController extends Controller
         );
 
         $validated['terms'] = $request->boolean('terms');
+        $validated['agree_children_policy'] = $request->boolean('agree_children_policy');
         $validated['status'] = $request->boolean('status');
 
         $registration->update($validated);
@@ -228,10 +232,6 @@ class RegistrationController extends Controller
             ->with('success','Registration deleted successfully.');
     }
 
-    /**
-     * ORIGINAL badge generator - gift.jpg background ke saath.
-     * Ye function bilkul UNCHANGED hai - sirf email attachment ke liye use hota hai.
-     */
     private function generateBadge($registration)
     {
         $background = imagecreatefromjpeg(public_path('gift.jpg'));
@@ -302,11 +302,6 @@ class RegistrationController extends Controller
         return $badgePath;
     }
 
-    /**
-     * NAYA standalone card - sirf "Download your badge" button ke liye.
-     * 2.5in x 3in @ 300 DPI = 750 x 900 px.
-     * Padding kam ki gayi hai - QR bada, margins chhote.
-     */
     private function generateDownloadCard($registration)
     {
         $cardWidth  = 750;
@@ -316,52 +311,53 @@ class RegistrationController extends Controller
 
         $white  = imagecolorallocate($badge, 255, 255, 255);
         $black  = imagecolorallocate($badge, 0, 0, 0);
-        $gray   = imagecolorallocate($badge, 90, 90, 90);
         $border = imagecolorallocate($badge, 210, 210, 210);
 
         imagefill($badge, 0, 0, $white);
         imagerectangle($badge, 0, 0, $cardWidth - 1, $cardHeight - 1, $border);
 
-        $font = public_path('fonts/Roboto-Regular.ttf');
+        $fontBold = public_path('fonts/Roboto-Bold.ttf');
 
-        // Kam padding wala layout:
-        $sidePadding = 30;   // pehle QR ke around ~175px khali jagah thi, ab kam
-        $topPadding  = 50;
+        $edgeMargin   = 40;
+        $maxTextWidth = $cardWidth - ($edgeMargin * 2);
+        $gap          = 90; 
 
-        // 1. Name (top, kam gap)
         $name = strtoupper($registration->full_name);
-        $nameFont = 34;
-        $box = imagettfbbox($nameFont, 0, $font, $name);
-        $textWidth = $box[2] - $box[0];
-        $x = ($cardWidth - $textWidth) / 2;
-        imagettftext($badge, $nameFont, 0, $x, $topPadding + 40, $black, $font, $name);
+        $nameFont = $this->fitFontSize($name, $fontBold, $maxTextWidth, 90, 20);
+        $nameHeight = $nameFont * 1.2;
 
-        // 2. QR Code - bada size, kam side padding
-        $qr = imagecreatefrompng(
-            storage_path(
-                'app/public/registration-qrcode/' .
-                $registration->registration_no .
-                '.png'
-            )
-        );
+        $qrSize = 400;
 
-        $qrSize = $cardWidth - ($sidePadding * 2); // ab side gap sirf 30px reh gaya
-        $qrX = $sidePadding;
-        $qrY = $topPadding + 90;
-
-        imagecopyresampled(
-            $badge, $qr, $qrX, $qrY, 0, 0,
-            $qrSize, $qrSize, imagesx($qr), imagesy($qr)
-        );
-
-        // 3. Company name (QR ke turant niche, kam gap)
         $company = strtoupper($registration->company_name);
-        $companyFont = 22;
-        $box = imagettfbbox($companyFont, 0, $font, $company);
+        $companyFont = 34;
+        $companyLines = $this->wrapText($company, $fontBold, $companyFont, $maxTextWidth);
+        $lineHeight = $companyFont * 1.3;
+        $companyBlockHeight = count($companyLines) * $lineHeight;
+
+        $totalHeight = $nameHeight + $gap + $qrSize + $gap + $companyBlockHeight;
+        $topMargin = ($cardHeight - $totalHeight) / 2;
+
+        $box = imagettfbbox($nameFont, 0, $fontBold, $name);
         $textWidth = $box[2] - $box[0];
         $x = ($cardWidth - $textWidth) / 2;
-        $companyY = $qrY + $qrSize + 40;
-        imagettftext($badge, $companyFont, 0, $x, $companyY, $gray, $font, $company);
+        $nameY = $topMargin + $nameFont;
+        imagettftext($badge, $nameFont, 0, $x, $nameY, $black, $fontBold, $name);
+
+        $qr = imagecreatefrompng(
+            storage_path('app/public/registration-qrcode/' . $registration->registration_no . '.png')
+        );
+        $qrX = ($cardWidth - $qrSize) / 2;
+        $qrY = $nameY + $gap;
+        imagecopyresampled($badge, $qr, $qrX, $qrY, 0, 0, $qrSize, $qrSize, imagesx($qr), imagesy($qr));
+
+        $lineY = $qrY + $qrSize + $gap + $companyFont;
+        foreach ($companyLines as $line) {
+            $box = imagettfbbox($companyFont, 0, $fontBold, $line);
+            $textWidth = $box[2] - $box[0];
+            $x = ($cardWidth - $textWidth) / 2;
+            imagettftext($badge, $companyFont, 0, $x, $lineY, $black, $fontBold, $line);
+            $lineY += $lineHeight;
+        }
 
         $downloadPath = storage_path('app/public/badge-cards/' . $registration->registration_no . '.png');
 
@@ -374,6 +370,44 @@ class RegistrationController extends Controller
         imagedestroy($qr);
 
         return $downloadPath;
+    }
+
+    private function fitFontSize($text, $fontPath, $maxWidth, $startSize = 90, $minSize = 20)
+    {
+        for ($size = $startSize; $size >= $minSize; $size--) {
+            $box = imagettfbbox($size, 0, $fontPath, $text);
+            $width = $box[2] - $box[0];
+            if ($width <= $maxWidth) {
+                return $size;
+            }
+        }
+        return $minSize;
+    }
+
+    private function wrapText($text, $fontPath, $fontSize, $maxWidth)
+    {
+        $words = explode(' ', $text);
+        $lines = [];
+        $currentLine = '';
+
+        foreach ($words as $word) {
+            $testLine = $currentLine === '' ? $word : $currentLine . ' ' . $word;
+            $box = imagettfbbox($fontSize, 0, $fontPath, $testLine);
+            $width = $box[2] - $box[0];
+
+            if ($width > $maxWidth && $currentLine !== '') {
+                $lines[] = $currentLine;
+                $currentLine = $word;
+            } else {
+                $currentLine = $testLine;
+            }
+        }
+
+        if ($currentLine !== '') {
+            $lines[] = $currentLine;
+        }
+
+        return $lines;
     }
 
     private function roundedRectangle($img, $x1, $y1, $x2, $y2, $radius, $color)

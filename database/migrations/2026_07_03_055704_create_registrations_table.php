@@ -44,9 +44,10 @@ return new class extends Migration
             $table->string('business_nature');
 
             $table->string('primary_product_group');
-            $table->string('additional_product_group')->nullable();
+            $table->json('additional_product_group')->nullable();
 
             $table->boolean('terms')->default(false);
+            $table->boolean('agree_children_policy')->default(false);
 
             $table->boolean('status')->default(true);
 

@@ -37,7 +37,7 @@
 
         <hr class="mb-8 border-gray-200">
 
-        {{-- create.blade.php ke top pe, form se pehle --}}
+        {{-- Download Badge --}}
 
         @if (session('success'))
             <div
@@ -56,10 +56,10 @@
             </div>
         @endif
 
-        {{-- General error summary (agar validation fail ho to top pe saara list dikhega) --}}
+        {{-- General error summary --}}
         @if ($errors->any())
             <div class="mb-6 bg-red-50 border border-red-300 text-red-700 rounded-xl p-4">
-                <p class="font-semibold mb-2">Form submit nahi hua, ye galtiyan theek karein:</p>
+                <p class="font-semibold mb-2">Form not submitted, Please fix the following errors:</p>
                 <ul class="list-disc list-inside space-y-1 text-sm">
                     @foreach ($errors->all() as $error)
                         <li>{{ $error }}</li>
@@ -260,7 +260,7 @@
                     @enderror
                 </div>
 
-                {{-- City - ab normal fillable field --}}
+                {{-- City - fillable field --}}
                 <div class="mb-6">
                     <label class="block font-semibold text-gray-800 mb-2">City <span
                             class="text-red-500">*</span></label>
@@ -345,20 +345,25 @@
                 <div class="mb-8">
                     <label class="block font-semibold text-gray-800 mb-2">Please select additional product groups of
                         interest (multiple selections) <span class="text-red-500">*</span></label>
-                    <select name="additional_product_group" required
-                        class="w-full border {{ $errors->has('additional_product_group') ? 'border-red-500 ring-1 ring-red-400' : 'border-gray-200' }} bg-gray-50 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-400">
-                        <option value="gifts" {{ old('additional_product_group') == 'gifts' ? 'selected' : '' }}>
-                            Gifts & Novelty</option>
-                        <option value="stationery"
-                            {{ old('additional_product_group') == 'stationery' ? 'selected' : '' }}>Stationery & Paper
-                        </option>
-                        <option value="houseware"
-                            {{ old('additional_product_group') == 'houseware' ? 'selected' : '' }}>Houseware</option>
-                        <option value="toys" {{ old('additional_product_group') == 'toys' ? 'selected' : '' }}>Toys
-                        </option>
-                        <option value="other" {{ old('additional_product_group') == 'other' ? 'selected' : '' }}>
-                            Other</option>
-                    </select>
+
+                    <div
+                        class="grid grid-cols-1 sm:grid-cols-2 gap-3 border {{ $errors->has('additional_product_group') ? 'border-red-500 ring-1 ring-red-400' : 'border-gray-200' }} bg-gray-50 rounded-lg px-4 py-4">
+                        @foreach ([
+                            'gifts' => 'Gifts & Novelty',
+                            'stationery' => 'Stationery & Paper',
+                            'houseware' => 'Houseware',
+                            'toys' => 'Toys',
+                            'other' => 'Other',
+                        ] as $value => $label)
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="additional_product_group[]" value="{{ $value }}"
+                                    {{ in_array($value, old('additional_product_group', [])) ? 'checked' : '' }}
+                                    class="h-5 w-5 border-gray-300 rounded text-red-600 focus:ring-red-400">
+                                <span class="text-gray-800">{{ $label }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+
                     @error('additional_product_group')
                         <p class="text-red-600 text-sm mt-1">⚠ {{ $message }}</p>
                     @enderror

@@ -40,11 +40,14 @@ class Registration extends Model
         'additional_product_group',
 
         'terms',
+        'agree_children_policy',
         'status',
     ];
 
     protected $casts = [
         'terms' => 'boolean',
+        'agree_children_policy' => 'boolean',
+        'additional_product_group' => 'array',
         'status' => 'boolean',
     ];
 }

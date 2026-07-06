@@ -23,7 +23,11 @@ Route::post('/registration/create', [RegistrationController::class,'postCreate']
 Route::get('/registration/update/{id}', [RegistrationController::class,'getUpdate'])->name('registration.edit');
 Route::post('/registration/update/{id}', [RegistrationController::class,'postUpdate'])->name('registration.update');
 Route::get('/registration/view/{id}', [RegistrationController::class,'view'])->name('registration.view');
-Route::get('/registration/find', [RegistrationController::class, 'find'])->name('registration.find');
 Route::get('/registration/find', [RegistrationController::class, 'getFindBadge'])->name('registrations.find');
 Route::post('/registration/find', [RegistrationController::class, 'postFindBadge'])->name('registrations.find.search');
 Route::get('/registration/delete/{id}', [RegistrationController::class,'delete'])->name('registration.delete');
+Route::get('/badge/download/{registration_no}', function ($registration_no) {
+    $path = storage_path('app/public/badge-cards/'.$registration_no.'.png');
+    abort_unless(file_exists($path), 404);
+    return response()->download($path, $registration_no.'.png');
+})->name('badge.download');
